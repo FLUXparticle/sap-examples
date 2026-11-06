@@ -9,6 +9,12 @@
     <artifactId>runtime-v2</artifactId>
     <dependencies>
         <dependency>
+            <groupId>org.bouncycastle</groupId>
+            <artifactId>bcpkix-jdk18on</artifactId>
+            <version>1.83</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
             <groupId>org.apache.groovy</groupId>
             <artifactId>groovy-all</artifactId>
             <version>4.0.29</version>

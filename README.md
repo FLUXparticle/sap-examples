@@ -1,11 +1,11 @@
 # SAP Cloud Integration: Groovy-Beispiele
 
-Sieben bereinigte Kursbeispiele und ein Beispiel zur Meldungsvalidierung mit Spock-Tests. Zwei getrennte Maven-Module verhindern, dass sich die Groovy-Versionen auf dem Test-Classpath vermischen.
+Groovy-Beispiele aus dem Kurs sowie Beispiele zur Meldungsvalidierung und CMS-Extraktion mit Spock-Tests. Zwei getrennte Maven-Module verhindern, dass sich die Groovy-Versionen auf dem Test-Classpath vermischen.
 
 | Modul | Skriptversion | Groovy | Spock | Beispiele |
 | --- | --- | --- | --- | --- |
 | `runtime-v1` | 1.x | 2.4.21 | 1.3 | `buildMailContent`, `convertFileLinesToXmlDocument`, `getMonthGerman`, `padSpace`, `INL_AK_PruefeSatzlangeFlatFile` |
-| `runtime-v2` | 2.x | 4.0.29 | 2.3 | `buildZipFile`, `validateInputParameters`, `validateMeldungen` |
+| `runtime-v2` | 2.x | 4.0.29 | 2.3 | `buildZipFile`, `validateInputParameters`, `validateMeldungen`, `extractCmsContent` |
 
 Die Originalimporte der SAP-Message-APIs bleiben erhalten. Die zwei Hilfsskripte ohne explizite Runtime-Angabe (`getMonthGerman`, `padSpace`) sind 1.x zugeordnet. SAP dokumentiert die neue Runtime in [Upgrading Script](https://help.sap.com/docs/integration-suite/isuite-integrations-and-apis/upgrading-groovy-script?locale=en-US).
 
@@ -35,3 +35,14 @@ Die Tests prüfen lokale Skriptlogik mit unterschiedlichen Groovy-Versionen, kei
 ## Meldungen als Byte-Body validieren
 
 `ValidateMeldungenSpec` liest `runtime-v2/src/test/resources/meldungen.txt` unverändert als `byte[]` und setzt diese Bytes als Message-Body. Der Test führt keine Zeichensatz-Konvertierung durch; der Mock stellt den Byte-Body als InputStream bereit. `validateMeldungen` liest den Body als InputStream und übergibt ihn an `zeigeZeilen`. Dort wird er über einen ISO-8859-1-Reader als Zeilenstream verarbeitet. Das Skript filtert im Zeilenstream die `VSDD`-Sätze und prüft in `forEach` per Assertion, dass die vierte Spalte 14 Zeichen enthält. Der Test erwartet einen `AssertionError` für Satz `25041`, dessen vierte Spalte nur `20260213` enthält. Stream und Reader werden im `finally`-Block geschlossen.
+
+## CMS-Nutzdaten ohne zusätzliche Bibliothek extrahieren
+
+`extractCmsContent.groovy` ist ein eingeschränkter Prototyp für binäres, unverschlüsseltes CMS `SignedData` mit angehängtem `id-data`-Inhalt. Er liest ASN.1-Tags und Längen, navigiert zum eingebetteten OCTET STRING und kopiert die Nutzdaten bytegenau. Auch konstruierte OCTET STRINGs und BER-Strukturen mit unbestimmten Längen und End-of-Contents-Markern werden verarbeitet. Zertifikate und Signaturdaten werden übersprungen, nicht geprüft.
+
+Unterstützt werden feste ASN.1-Längen und unbestimmte Längen für konstruierte Werte (DER/BER). Nicht unterstützt: Detached-Signaturen, Verschlüsselung, PEM/Base64/MIME-Verpackung sowie andere PKCS#7-Inhaltstypen. Verschachtelung und Längengrenzen werden geprüft. Das ist kein vollständiger CMS-Validator. Eine erfolgreiche Extraktion sagt nichts über Gültigkeit oder Vertrauenswürdigkeit der Signatur aus.
+
+- `processData(message)` liest einen InputStream und setzt den extrahierten Inhalt als `byte[]`-Body. Diese SAP-Einstiegsmethode puffert die gesamte Ausgabe im Speicher.
+- `extractContent(input, output)` kopiert dagegen mit einem 8-KiB-Puffer und eignet sich für große Nutzdaten, wenn auch Quelle und Ziel gestreamt werden. Der Aufrufer schließt beide Streams. Bei einem Fehler muss bereits geschriebene Ausgabe verworfen werden.
+
+`ExtractCmsContentSpec` prüft eine echte OpenSSL-Signatur, blockweise Binärdaten, fehlende Nutzdaten, abgeschnittene Daten, falsche Längen und nicht unterstützte Formate. `src/test/resources/cms/attached.der` enthält ein selbstsigniertes Testzertifikat und die Bytes von `payload.xml`; der private Testschlüssel wird nicht im Projekt gespeichert. Zusätzlich erzeugt Bouncy Castle (`bcpkix-jdk18on:1.83`, ausschließlich Test-Scope) frische RSA-2048-Schlüssel und ein kurzlebiges selbstsigniertes Zertifikat im Speicher. Damit signieren die Tests XML und 100.003 Byte Binärdaten mit SHA256withRSA und prüfen die erzeugte Signatur mit Bouncy Castle. Getestet werden sowohl feste Längen als auch die BER-Streaming-Ausgabe mit 1-KiB-CMS-Blöcken, einschließlich Nullbytes an Block- und Kopierpuffergrenzen. Die extrahierten Bytes müssen exakt der Eingabe entsprechen. Es wird weder ein Keystore benötigt noch ein globaler Security-Provider registriert. Die kleinen Fehlerfall-Fixtures sind rein strukturelle Container ohne echte Signatur.
